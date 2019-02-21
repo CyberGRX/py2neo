@@ -163,6 +163,12 @@ class Connector(object):
 
     def __new__(cls, uri, **settings):
         cx_data = get_connection_data(uri, **settings)
+        for k, v in settings.items():
+            if k in cx_data:
+                continue
+            else:
+                cx_data[k] = v
+
         for subclass in cls.walk_subclasses():
             if subclass.scheme == cx_data["scheme"]:
                 inst = object.__new__(subclass)
@@ -194,7 +200,7 @@ class Connector(object):
         if tx not in self.transactions:
             raise TransactionError("Invalid transaction")
 
-    def begin(self):
+    def begin(self, access_mode=None, mode=None, bookmarks=None, metadata=None, timeout=None):
         raise NotImplementedError()
 
     def commit(self, tx):
@@ -286,9 +292,9 @@ class BoltConnector(Connector):
         else:
             return self._run_in_tx(statement, parameters, tx, graph, keys, entities)
 
-    def begin(self):
-        tx = self.pool.acquire()
-        tx.begin()
+    def begin(self, access_mode=None, mode=None, bookmarks=None, metadata=None, timeout=None):
+        tx = self.pool.acquire(access_mode=access_mode)
+        tx.begin(mode=mode, bookmarks=bookmarks, metadata=metadata, timeout=timeout)
         self.transactions.add(tx)
         return tx
 
@@ -388,7 +394,7 @@ class HTTPConnector(Connector):
             result.done()
             return result
 
-    def begin(self):
+    def begin(self, access_mode=None, mode=None, bookmarks=None, metadata=None, timeout=None):
         r = self._post("/db/data/transaction")
         if r.status == 201:
             location_path = urlsplit(r.headers["Location"]).path

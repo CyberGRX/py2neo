@@ -95,10 +95,20 @@ class Database(object):
             inst = super(Database, cls).__new__(cls)
             inst._connection_data = connection_data
             from py2neo.internal.connectors import Connector
+
+            extra_kwargs = {}
+            for k, v in settings.items():
+                if k in connection_data.keys():
+                    continue
+                if k in ['auth', 'secure', 'user_agent']:
+                    continue
+                extra_kwargs[k] = v
+
             inst._connector = Connector(connection_data["uri"],
                                         auth=connection_data["auth"],
                                         secure=connection_data["secure"],
-                                        user_agent=connection_data["user_agent"])
+                                        user_agent=connection_data["user_agent"],
+                                        **extra_kwargs)
             inst._graphs = {}
             cls._instances[key] = inst
         return inst
@@ -280,6 +290,7 @@ class Graph(object):
     ``secure``      Use a secure connection (TLS)                  bool            ``False``
     ``user``        User to authenticate as                        str             ``'neo4j'``
     ``user_agent``  User agent to send for all connections         str             `(depends on URI scheme)`
+    ``**kwargs``    Configuration passthrough to the Connector     kwargs          ``None``
     ==============  =============================================  ==============  =============
 
     Each setting can be provided as a keyword argument or as part of
@@ -344,6 +355,11 @@ class Graph(object):
                          automatically commit after the first operation
         """
         return Transaction(self, autocommit)
+
+    def begin_readonly(self):
+        """ Begin a new :class:`.Transaction`.
+        """
+        return Transaction(self, access_mode="READ")
 
     def create(self, subgraph):
         """ Run a :meth:`.Transaction.create` operation within a
@@ -746,16 +762,16 @@ class Transaction(object):
 
     _finished = False
 
-    def __init__(self, graph, autocommit=False):
+    def __init__(self, graph, autocommit=False, **kwargs):
         self.graph = graph
         self.autocommit = autocommit
         self.entities = deque()
         self.connector = self.graph.database.connector
         self.results = []
         if autocommit:
-            self.transaction = None
+            self.transaction = None 
         else:
-            self.transaction = self.connector.begin()
+            self.transaction = self.connector.begin(**kwargs)
 
     # def __del__(self):
     #     if self.session:
